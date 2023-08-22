@@ -164,10 +164,6 @@
     "service": "ec2"
   },
   {
-    "function": "describe_images",
-    "service": "ec2"
-  },
-  {
     "function": "describe_import_image_tasks",
     "service": "ec2"
   },
