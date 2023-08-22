@@ -163,7 +163,6 @@ def _get_service_data(session, region_name, service, log, max_retries, retry_del
         region_name,
         response,
     )
-    #log.info("Get Service Data: \n%s",response)
     return {"region": region_name, "service": service["service"], "result": response}
 
 
@@ -218,7 +217,6 @@ def process_region(
                 log.error(traceback.format_exc())
 
     log.info("Finished processing for region: %s", region)
-    #log.info("Get Region Process: \n%s",region_results)
     return region_results
 
 
@@ -309,7 +307,6 @@ def main(
             ): region
             for region in regions
         }
-        log.info("Results: %s", future_to_region)
         for future in concurrent.futures.as_completed(future_to_region):
             region = future_to_region[future]
             try:
@@ -320,7 +317,7 @@ def main(
                     os.makedirs(directory, exist_ok=True)
                     with open(
                         os.path.join(directory, f"{service_result['service']}.json"),
-                        "a",
+                        "w",
                     ) as f:
                         json.dump(service_result["result"], f, cls=DateTimeEncoder)
             except Exception as exc:
