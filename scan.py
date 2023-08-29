@@ -290,7 +290,7 @@ def main(
 
     start_time = time.time()
 
-    results = []
+    results = {}
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=concurrent_regions
     ) as executor:
@@ -312,8 +312,11 @@ def main(
             try:
                 region_results = future.result()
                 for service_result in region_results:
-                    results.append(service_result["result"])
-                    log.info("Service Name: %s", service_result['service'])
+                    if service_result['service'] not in results:
+                        results[service_result['service']] = []
+                        results[service_result['service']].append(service_result["result"])
+                    else:
+                        results[service_result['service']].append(service_result["result"])
                 directory = os.path.join(output_dir, timestamp, region)
                 os.makedirs(directory, exist_ok=True)
                 with open(
