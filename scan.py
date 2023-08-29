@@ -313,6 +313,7 @@ def main(
                 region_results = future.result()
                 for service_result in region_results:
                     results.append(service_result["result"])
+                    log.info("Service Name: %s", service_result['service'])
                 directory = os.path.join(output_dir, timestamp, region)
                 os.makedirs(directory, exist_ok=True)
                 with open(
