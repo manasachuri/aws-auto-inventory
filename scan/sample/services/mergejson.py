@@ -13,6 +13,11 @@ def merge_json_files(file_paths):
 
 
 paths = [
+    'dynamodb.json',
+    's3.json',
+    'lambda.json'
+]
+'''
     'connect.json',
     'kinesis.json',
     'kinesisanalytics.json',
@@ -23,7 +28,7 @@ paths = [
     'kinesis-video-signaling.json',
     'kinesis-video-webrtc-storage.json',
     'ec2.json',
-    'elasticache.json',
+    'elasticache.json'
     'appsync.json',
     'backup.json',
     'config.json',
@@ -31,7 +36,6 @@ paths = [
     'elb.json',
     'elbv2.json',
     'events.json',
-    'lambda.json',
     'sqs.json',
     'secretsmanager.json',
     'securityhub.json',
@@ -41,7 +45,6 @@ paths = [
     'athena.json',
     'cloudwatch.json',
     'connect-contact-lens.json',
-    'dynamodb.json',
     'glacier.json',
     'guardduty.json',
     'firehose.json',
@@ -49,7 +52,6 @@ paths = [
     'pinpoint-email.json',
     'pinpoint-sms-voice-v2.json',
     'pinpoint-sms-voice.json',
-    's3.json',
     'stepfunctions.json',
     'codebuild.json',
     'connectcampaigns.json',
@@ -59,6 +61,6 @@ paths = [
     'waf.json',
     'wafv2.json',
     'waf-regional.json'
-]
+'''
 
 merge_json_files(paths)

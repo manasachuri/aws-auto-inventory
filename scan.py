@@ -119,10 +119,12 @@ def _get_service_data(session, region_name, service, log, max_retries, retry_del
     parameters = service.get("parameters", None)
 
     log.info(
-        "Getting data on service %s with function %s in region %s",
+        "Getting data on service %s with function %s in region %s. Also, ResultKey and Parameters are as follows: %s %s",
         service["service"],
         function,
         region_name,
+        result_key,
+        parameters,
     )
 
     try:
@@ -209,9 +211,9 @@ def process_region(
                 result = future.result()
                 if result is not None and result["result"]:
                     region_results.append(result)
-                    log.info("Successfully processed service: %s", service["service"])
+                    log.info("Successfully processed service: %s - %s", service["service"], service["function"],)
                 else:
-                    log.info("No data found for service: %s", service["service"])
+                    log.info("No data found for service: %s - %s", service["service"], service["function"],)
             except Exception as exc:
                 log.error("%r generated an exception: %s" % (service["service"], exc))
                 log.error(traceback.format_exc())
@@ -239,6 +241,72 @@ def check_aws_credentials(session):
 
     return True
 
+def describe_resources(result, session, region, log):
+    log.info("Started: AWS Describe Resources")
+    new_result = {}
+    try:
+        for resource in result:
+            if resource not in new_result:
+                new_result[resource] = []
+            if resource == 'dynamodb':
+                #log.info("Started: AWS Describe DynamoDB Tables in region: %s", region)
+                dynamodb_client = session.client('dynamodb', region_name=region)
+                #log.info("result['dynamodb']: %s", result['dynamodb'])
+                tables = result['dynamodb'][0]['TableNames']
+                for table in tables:
+                    #log.info("Started: AWS Describe DynamoDB Table: %s - %s", table, region)
+                    response = dynamodb_client.describe_table(TableName=table)
+                    new_table = {}
+                    new_table['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+                    new_table['Region'] = session.region_name
+                    new_table['Arn'] = response['Table']['TableArn']
+                    new_table['Tags'] = dynamodb_client.list_tags_of_resource(ResourceArn=new_table['Arn'])
+                    #log.info("Completed: AWS Describe DynamoDB Table: %s", new_table)
+                    new_result['dynamodb'].append(new_table)
+            elif resource == 's3':
+                #log.info("Started: AWS Describe S3 Buckets in region: %s", region)
+                s3_client = session.client('s3', region_name=region)
+                #log.info("result['s3']: %s", result['s3'])
+                buckets = result['s3'][0]['Buckets']
+                for bucket in buckets:
+                    #log.info("Started: AWS Describe S3 Bucket: %s - %s", bucket, region)
+                    response = s3_client.get_bucket_location(Bucket=bucket['Name'])
+                    new_bucket = {}
+                    new_bucket['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+                    new_bucket['Location'] = response['LocationConstraint']
+                    try:
+                        new_bucket['Tags'] = s3_client.get_bucket_tagging(Bucket=bucket['Name'])
+                    except botocore.exceptions.ClientError as error:
+                        if 'NoSuchTagSet' in str(error):
+                            new_bucket['Tags'] = {}
+                            pass
+                    new_bucket['Arn'] = 'arn:aws:s3:::' + bucket['Name']
+                    #log.info("Completed: AWS Describe S3 Bucket: %s", new_bucket)
+                    new_result['s3'].append(new_bucket)
+            elif resource == 'lambda':
+                #log.info("Started: AWS Describe Lambda Functions in region: %s", region)
+                lambda_client = session.client('lambda', region_name=region)
+                #log.info("result['lambda']: %s", result['lambda'])
+                functions = result['lambda'][0]['Functions']
+                for function in functions:
+                    #log.info("Started: AWS Describe Lambda Function: %s - %s", function, region)
+                    response = lambda_client.get_function_configuration(FunctionName=function['FunctionName'])
+                    new_function = {}
+                    new_function['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+                    new_function['Region'] = session.region_name
+                    new_function['Arn'] = response['FunctionArn']
+                    new_function['Tags'] = lambda_client.list_tags(Resource=new_function['Arn'])
+                    #log.info("Completed: AWS Describe Lambda Function: %s", new_function)
+                    new_result['lambda'].append(new_function)
+            else:
+                print(f"Service {result['service']} not supported")
+                return
+    except Exception as exc:
+        log.error(f"Error describing resources: {exc}")
+        log.error(traceback.format_exc())
+    
+    log.info("Finished: AWS Describe Resources")
+    return new_result
 
 def main(
     scan,
@@ -290,7 +358,6 @@ def main(
 
     start_time = time.time()
 
-    results = {}
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=concurrent_regions
     ) as executor:
@@ -309,6 +376,8 @@ def main(
         }
         for future in concurrent.futures.as_completed(future_to_region):
             region = future_to_region[future]
+            results = {}
+            new_results = {}
             try:
                 region_results = future.result()
                 for service_result in region_results:
@@ -317,21 +386,20 @@ def main(
                         results[service_result['service']].append(service_result["result"])
                     else:
                         results[service_result['service']].append(service_result["result"])
+                new_results = describe_resources(results, session, region, log)
                 directory = os.path.join(output_dir, timestamp, region)
                 os.makedirs(directory, exist_ok=True)
                 with open(
                     os.path.join(directory, f"{service_result['service']}.json"),
                     "w",
                 ) as f:
-                    json.dump(results, f, indent=2, cls=DateTimeEncoder)
+                    json.dump(new_results, f, indent=2, cls=DateTimeEncoder)
             except Exception as exc:
                 log.error("%r generated an exception: %s" % (region, exc))
                 log.error(traceback.format_exc())
-
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"Total elapsed time for scanning: {display_time(elapsed_time)}")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
