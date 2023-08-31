@@ -248,6 +248,7 @@ def check_aws_credentials(session):
 
     return True
 
+"""
 def describe_resources(result, session, region, log):
     log.info("Started: AWS Describe Resources")
     new_result = {}
@@ -303,6 +304,90 @@ def describe_resources(result, session, region, log):
                         new_function['Arn'] = response['FunctionArn']
                         new_function['Tags'] = lambda_client.list_tags(Resource=new_function['Arn'])
                         new_result['lambda'].append(new_function)
+            else:
+                print(f"Service {result['service']} not supported")
+                return
+    except Exception as exc:
+        log.error(f"Error describing resources: {exc}")
+        log.error(traceback.format_exc())
+    
+    log.info("Finished: AWS Describe Resources")
+    return new_result
+"""
+
+def get_dynamodb_tables(result, session, region, log):
+    new_result = []
+    dynamodb_client = session.client('dynamodb', region_name=region)
+    page_iterator=result['dynamodb'][0]
+    log.info(f"Found {len(list(page_iterator))} DynamoDB pages")
+    for page in page_iterator:
+        tables = page['TableNames']
+        for table in tables:
+            response = dynamodb_client.describe_table(TableName=table)
+            new_table = {}
+            new_table['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+            new_table['Region'] = session.region_name
+            new_table['Arn'] = response['Table']['TableArn']
+            new_table['Tags'] = dynamodb_client.list_tags_of_resource(ResourceArn=new_table['Arn'])['Tags']
+            new_result.append(new_table)
+    return new_result
+
+def get_s3_buckets(result, session, region, log):
+    new_result = []
+    s3_client = session.client('s3', region_name=region)
+    buckets = result['s3'][0]['Buckets']
+    for bucket in buckets:
+        response = s3_client.get_bucket_location(Bucket=bucket['Name'])
+        if response == 'null':
+            response = "us-east-1"
+        new_bucket = {}
+        new_bucket['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+        new_bucket['Location'] = response['LocationConstraint']
+        try:
+            new_bucket['Tags'] = s3_client.get_bucket_tagging(Bucket=bucket['Name'])['TagSet']
+        except botocore.exceptions.ClientError as error:
+            if 'NoSuchTagSet' in str(error):
+                new_bucket['Tags'] = []
+                pass
+            else:
+                log.info(f"Error getting tags for bucket {bucket['Name']}: {error}")
+                new_bucket['Tags'] = []
+                pass
+        new_bucket['Arn'] = 'arn:aws:s3:::' + bucket['Name']
+        new_result.append(new_bucket)
+    return new_result
+
+def get_lambda_functions(result, session, region, log):
+    new_result = []
+    lambda_client = session.client('lambda', region_name=region)
+    page_iterator=result['lambda'][0]
+    log.info(f"Found {len(list(page_iterator))} Lambda pages")
+    for page in page_iterator:
+        functions = page['Functions']
+        for function in functions:
+            response = lambda_client.get_function_configuration(FunctionName=function['FunctionName'])
+            new_function = {}
+            new_function['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+            new_function['Region'] = session.region_name
+            new_function['Arn'] = response['FunctionArn']
+            new_function['Tags'] = lambda_client.list_tags(Resource=new_function['Arn'])['Tags']
+            new_result.append(new_function)
+    return new_result
+
+def describe_resources(result, session, region, log):
+    log.info("Started: AWS Describe Resources")
+    new_result = {}
+    try:
+        for resource in result:
+            if resource == 'dynamodb':
+                tables = get_dynamodb_tables(result, session, region, log)
+                new_result['dynamodb'] = tables
+            elif resource == 's3':
+                buckets = get_s3_buckets(result, session, region, log)
+                new_result['s3'] = buckets
+            elif resource == 'lambda':
+                functions = get_lambda_functions(result, session, region, log)
+                new_result['lambda'] = functions
             else:
                 print(f"Service {result['service']} not supported")
                 return
