@@ -73,7 +73,14 @@ def api_call_with_retry(client, function_name, parameters, max_retries, retry_de
     def api_call():
         for attempt in range(max_retries):
             try:
-                function_to_call = getattr(client, function_name)
+                if function_name == 'list_buckets':
+                    function_to_call = getattr(client, function_name)
+                    if parameters:
+                        return function_to_call(**parameters)
+                    else:
+                        return function_to_call()
+                paginator = client.get_paginator(function_name)
+                function_to_call = getattr(paginator, 'paginate')
                 if parameters:
                     return function_to_call(**parameters)
                 else:
@@ -249,28 +256,25 @@ def describe_resources(result, session, region, log):
             if resource not in new_result:
                 new_result[resource] = []
             if resource == 'dynamodb':
-                #log.info("Started: AWS Describe DynamoDB Tables in region: %s", region)
-                dynamodb_client = session.client('dynamodb', region_name=region)
-                #log.info("result['dynamodb']: %s", result['dynamodb'])
-                tables = result['dynamodb'][0]['TableNames']
-                for table in tables:
-                    #log.info("Started: AWS Describe DynamoDB Table: %s - %s", table, region)
-                    response = dynamodb_client.describe_table(TableName=table)
-                    new_table = {}
-                    new_table['AccountID'] = session.client('sts').get_caller_identity().get('Account')
-                    new_table['Region'] = session.region_name
-                    new_table['Arn'] = response['Table']['TableArn']
-                    new_table['Tags'] = dynamodb_client.list_tags_of_resource(ResourceArn=new_table['Arn'])
-                    #log.info("Completed: AWS Describe DynamoDB Table: %s", new_table)
-                    new_result['dynamodb'].append(new_table)
+                page_iterator=result[resource][0]
+                for page in page_iterator:
+                    dynamodb_client = session.client('dynamodb', region_name=region)
+                    tables = page['TableNames']
+                    for table in tables:
+                        response = dynamodb_client.describe_table(TableName=table)
+                        new_table = {}
+                        new_table['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+                        new_table['Region'] = session.region_name
+                        new_table['Arn'] = response['Table']['TableArn']
+                        new_table['Tags'] = dynamodb_client.list_tags_of_resource(ResourceArn=new_table['Arn'])
+                        new_result['dynamodb'].append(new_table)
             elif resource == 's3':
-                #log.info("Started: AWS Describe S3 Buckets in region: %s", region)
                 s3_client = session.client('s3', region_name=region)
-                #log.info("result['s3']: %s", result['s3'])
-                buckets = result['s3'][0]['Buckets']
+                buckets = result[resource][0]['Buckets']
                 for bucket in buckets:
-                    #log.info("Started: AWS Describe S3 Bucket: %s - %s", bucket, region)
                     response = s3_client.get_bucket_location(Bucket=bucket['Name'])
+                    if response == 'null':
+                        response = "us-east-1"
                     new_bucket = {}
                     new_bucket['AccountID'] = session.client('sts').get_caller_identity().get('Account')
                     new_bucket['Location'] = response['LocationConstraint']
@@ -280,24 +284,25 @@ def describe_resources(result, session, region, log):
                         if 'NoSuchTagSet' in str(error):
                             new_bucket['Tags'] = {}
                             pass
+                        else:
+                            log.info(f"Error getting tags for bucket {bucket['Name']}: {error}")
+                            new_bucket['Tags'] = {}
+                            pass
                     new_bucket['Arn'] = 'arn:aws:s3:::' + bucket['Name']
-                    #log.info("Completed: AWS Describe S3 Bucket: %s", new_bucket)
                     new_result['s3'].append(new_bucket)
             elif resource == 'lambda':
-                #log.info("Started: AWS Describe Lambda Functions in region: %s", region)
-                lambda_client = session.client('lambda', region_name=region)
-                #log.info("result['lambda']: %s", result['lambda'])
-                functions = result['lambda'][0]['Functions']
-                for function in functions:
-                    #log.info("Started: AWS Describe Lambda Function: %s - %s", function, region)
-                    response = lambda_client.get_function_configuration(FunctionName=function['FunctionName'])
-                    new_function = {}
-                    new_function['AccountID'] = session.client('sts').get_caller_identity().get('Account')
-                    new_function['Region'] = session.region_name
-                    new_function['Arn'] = response['FunctionArn']
-                    new_function['Tags'] = lambda_client.list_tags(Resource=new_function['Arn'])
-                    #log.info("Completed: AWS Describe Lambda Function: %s", new_function)
-                    new_result['lambda'].append(new_function)
+                page_iterator=result[resource][0]
+                for page in page_iterator:
+                    lambda_client = session.client('lambda', region_name=region)
+                    functions = page['Functions']
+                    for function in functions:
+                        response = lambda_client.get_function_configuration(FunctionName=function['FunctionName'])
+                        new_function = {}
+                        new_function['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+                        new_function['Region'] = session.region_name
+                        new_function['Arn'] = response['FunctionArn']
+                        new_function['Tags'] = lambda_client.list_tags(Resource=new_function['Arn'])
+                        new_result['lambda'].append(new_function)
             else:
                 print(f"Service {result['service']} not supported")
                 return
