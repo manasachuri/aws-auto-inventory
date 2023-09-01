@@ -11,6 +11,7 @@ import os
 import time
 import traceback
 from datetime import datetime
+from botocore.config import Config
 import requests
 
 # Define the timestamp as a string, which will be the same throughout the execution of the script.
@@ -257,9 +258,9 @@ def describe_resources(result, session, region, log):
             if resource not in new_result:
                 new_result[resource] = []
             if resource == 'dynamodb':
-                page_iterator=result[resource][0]
+                dynamodb_client = session.client('dynamodb', region_name=region)
+                page_iterator=result['dynamodb'][0]
                 for page in page_iterator:
-                    dynamodb_client = session.client('dynamodb', region_name=region)
                     tables = page['TableNames']
                     for table in tables:
                         response = dynamodb_client.describe_table(TableName=table)
@@ -292,9 +293,9 @@ def describe_resources(result, session, region, log):
                     new_bucket['Arn'] = 'arn:aws:s3:::' + bucket['Name']
                     new_result['s3'].append(new_bucket)
             elif resource == 'lambda':
-                page_iterator=result[resource][0]
+                lambda_client = session.client('lambda', region_name=region)
+                page_iterator=result['lambda'][0]
                 for page in page_iterator:
-                    lambda_client = session.client('lambda', region_name=region)
                     functions = page['Functions']
                     for function in functions:
                         response = lambda_client.get_function_configuration(FunctionName=function['FunctionName'])
@@ -315,11 +316,13 @@ def describe_resources(result, session, region, log):
     return new_result
 """
 
+""" 
 def get_dynamodb_tables(result, session, region, log):
-    new_result = []
+    new_result = {}
+    if 'dynamodb' not in new_result:
+        new_result['dynamodb'] = []
     dynamodb_client = session.client('dynamodb', region_name=region)
     page_iterator=result['dynamodb'][0]
-    log.info(f"Found {len(list(page_iterator))} DynamoDB pages")
     for page in page_iterator:
         tables = page['TableNames']
         for table in tables:
@@ -329,11 +332,46 @@ def get_dynamodb_tables(result, session, region, log):
             new_table['Region'] = session.region_name
             new_table['Arn'] = response['Table']['TableArn']
             new_table['Tags'] = dynamodb_client.list_tags_of_resource(ResourceArn=new_table['Arn'])['Tags']
-            new_result.append(new_table)
+            new_result['dynamodb'].append(new_table)
+    return new_result
+"""
+def dynamodb_process_table(table, dynamodb_client, session):
+    response = dynamodb_client.describe_table(TableName=table)
+    new_table = {}
+    new_table['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+    new_table['Region'] = session.region_name
+    new_table['Arn'] = response['Table']['TableArn']
+    new_table['Tags'] = dynamodb_client.list_tags_of_resource(ResourceArn=new_table['Arn'])['Tags']
+    return new_table
+
+def get_dynamodb_tables(result, session, region, log):
+    new_result = {'dynamodb': []}
+
+    def dynamodb_process_page(page, dynamodb_client, session):
+        tables = page['TableNames']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for table in tables:
+                future = executor.submit(dynamodb_process_table, table, dynamodb_client, session)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_table = future.result()
+                new_result['dynamodb'].append(new_table)
+
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections)
+    dynamodb_client = session.client('dynamodb', region_name=region, config=custom_config)
+    page_iterator = result['dynamodb'][0]
+    for page in page_iterator:
+        dynamodb_process_page(page, dynamodb_client, session)
+    
     return new_result
 
+"""
 def get_s3_buckets(result, session, region, log):
-    new_result = []
+    new_result = {}
+    if 's3' not in new_result:
+        new_result['s3'] = []
     s3_client = session.client('s3', region_name=region)
     buckets = result['s3'][0]['Buckets']
     for bucket in buckets:
@@ -354,14 +392,145 @@ def get_s3_buckets(result, session, region, log):
                 new_bucket['Tags'] = []
                 pass
         new_bucket['Arn'] = 'arn:aws:s3:::' + bucket['Name']
-        new_result.append(new_bucket)
+        new_result['s3'].append(new_bucket)
     return new_result
 
+def s3_process_bucket(bucket, s3_client, session, log):
+    new_bucket = {}
+    new_bucket['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+    
+    response = s3_client.get_bucket_location(Bucket=bucket['Name'])
+    location = response.get('LocationConstraint', 'us-east-1')  # Default to 'us-east-1' if not present
+    
+    new_bucket['Location'] = location
+    
+    try:
+        tags_response = s3_client.get_bucket_tagging(Bucket=bucket['Name'])
+        new_bucket['Tags'] = tags_response['TagSet']
+    except botocore.exceptions.ClientError as error:
+        if 'NoSuchTagSet' in str(error):
+            new_bucket['Tags'] = []
+        else:
+            log.info(f"Error getting tags for bucket {bucket['Name']}: {error}")
+            new_bucket['Tags'] = []
+
+    new_bucket['Arn'] = 'arn:aws:s3:::' + bucket['Name']
+    return new_bucket
+
+def get_s3_buckets(result, session, region, log):
+    new_result = {'s3': []}
+    
+    def s3_process_buckets(buckets, s3_client, session, log):
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for bucket in buckets:
+                future = executor.submit(s3_process_bucket, bucket, s3_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_bucket = future.result()
+                new_result['s3'].append(new_bucket)
+
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections)
+    s3_client = session.client('s3', region_name=region, config=custom_config)
+    buckets = result['s3'][0]['Buckets']
+    s3_process_buckets(buckets, s3_client, session, log)
+    
+    return new_result
+"""
+
+def s3_process_bucket(bucket, s3_client, session, log):
+    new_bucket = {}
+    new_bucket['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+    
+    # Handle errors with exponential backoff retry for get_bucket_location
+    max_retries = 5
+    base_backoff_time = 1  # Initial wait time in seconds
+    for retry in range(max_retries + 1):
+        try:
+            response = s3_client.get_bucket_location(Bucket=bucket['Name'])
+            location = response.get('LocationConstraint', 'us-east-1')  # Default to 'us-east-1' if not present
+            new_bucket['Location'] = location
+            break  # If successful, break out of retry loop
+        except botocore.exceptions.ClientError as error:
+            if retry < max_retries:
+                error_code = error.response.get('Error', {}).get('Code')
+                if error_code == 'Throttling' or error_code == 'RequestLimitExceeded':
+                    print(f"Throttling encountered for get_bucket_location, retrying ({retry + 1}/{max_retries + 1})")
+                else:
+                    print(f"Error encountered for get_bucket_location, retrying ({retry + 1}/{max_retries + 1}): {error_code}")
+                backoff_time = base_backoff_time * (2 ** retry)
+                print(f"Waiting for {backoff_time} seconds before retrying...")
+                time.sleep(backoff_time)
+            else:
+                print("Max retries reached for get_bucket_location")
+                log.info(f"Error getting location for bucket {bucket['Name']}: {error}")
+                new_bucket['Location'] = 'us-east-1'  # Default to 'us-east-1' if error
+            continue
+
+    # Handle errors with exponential backoff retry for get_bucket_tagging
+    max_retries = 5
+    base_backoff_time = 1  # Initial wait time in seconds
+    for retry in range(max_retries + 1):
+        try:
+            tags_response = s3_client.get_bucket_tagging(Bucket=bucket['Name'])
+            new_bucket['Tags'] = tags_response['TagSet']
+            break  # If successful, break out of retry loop
+        except botocore.exceptions.ClientError as error:
+            if retry < max_retries:
+                error_code = error.response.get('Error', {}).get('Code')
+                if error_code == 'Throttling' or error_code == 'RequestLimitExceeded':
+                    print(f"Throttling encountered for get_bucket_tagging, retrying ({retry + 1}/{max_retries + 1})")
+                elif error_code == 'NoSuchTagSet':
+                    print(f"No tags found for bucket {bucket['Name']}")
+                    new_bucket['Tags'] = []
+                    break  # If successful, break out of retry loop
+                elif error_code == 'AccessDenied':
+                    print(f"Access Denied for bucket {bucket['Name']}")
+                    new_bucket['Tags'] = []
+                    break  # If successful, break out of retry loop
+                else:
+                    print(f"Error encountered for get_bucket_tagging, retrying ({retry + 1}/{max_retries + 1}): {error_code}")
+                backoff_time = base_backoff_time * (2 ** retry)
+                print(f"Waiting for {backoff_time} seconds before retrying...")
+                time.sleep(backoff_time)
+            else:
+                print("Max retries reached for get_bucket_tagging")
+                log.info(f"Error getting tags for bucket {bucket['Name']}: {error}")
+                new_bucket['Tags'] = []
+            continue
+
+    new_bucket['Arn'] = 'arn:aws:s3:::' + bucket['Name']
+    return new_bucket
+
+def get_s3_buckets(result, session, region, log):
+    new_result = {'s3': []}
+    
+    def s3_process_buckets(buckets, s3_client, session, log):
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for bucket in buckets:
+                future = executor.submit(s3_process_bucket, bucket, s3_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_bucket = future.result()
+                new_result['s3'].append(new_bucket)
+
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections)
+    s3_client = session.client('s3', region_name=region, config=custom_config)
+    buckets = result['s3'][0]['Buckets']
+    s3_process_buckets(buckets, s3_client, session, log)
+    
+    return new_result
+
+"""
 def get_lambda_functions(result, session, region, log):
-    new_result = []
+    new_result = {}
+    if 'lambda' not in new_result:
+        new_result['lambda'] = []
     lambda_client = session.client('lambda', region_name=region)
     page_iterator=result['lambda'][0]
-    log.info(f"Found {len(list(page_iterator))} Lambda pages")
     for page in page_iterator:
         functions = page['Functions']
         for function in functions:
@@ -371,7 +540,91 @@ def get_lambda_functions(result, session, region, log):
             new_function['Region'] = session.region_name
             new_function['Arn'] = response['FunctionArn']
             new_function['Tags'] = lambda_client.list_tags(Resource=new_function['Arn'])['Tags']
-            new_result.append(new_function)
+            new_result['lambda'].append(new_function)
+    return new_result
+
+def lambda_process_function(function, lambda_client, session):
+    response = lambda_client.get_function_configuration(FunctionName=function['FunctionName'])
+    new_function = {}
+    new_function['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+    new_function['Region'] = session.region_name
+    new_function['Arn'] = response['FunctionArn']
+    new_function['Tags'] = lambda_client.list_tags(Resource=new_function['Arn'])['Tags']
+    return new_function
+
+def get_lambda_functions(result, session, region, log):
+    new_result = {'lambda': []}
+    
+    def lambda_process_page(page, lambda_client, session):
+        functions = page['Functions']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for function in functions:
+                future = executor.submit(lambda_process_function, function, lambda_client, session)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_function = future.result()
+                new_result['lambda'].append(new_function)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections)
+    lambda_client = session.client('lambda', region_name=region, config=custom_config)
+    page_iterator = result['lambda'][0]
+    for page in page_iterator:
+        lambda_process_page(page, lambda_client, session)
+    
+    return new_result
+"""
+def apply_backoff_with_retry(api_call, max_retries=5, base_backoff_time=1, **kwargs):
+    for retry in range(max_retries + 1):
+        try:
+            return api_call(**kwargs)
+        except botocore.exceptions.EndpointConnectionError as error:
+            if retry < max_retries:
+                print(f"EndpointConnectionError encountered, retrying ({retry + 1}/{max_retries + 1})")
+                backoff_time = base_backoff_time * (2 ** retry)
+                print(f"Waiting for {backoff_time} seconds before retrying...")
+                time.sleep(backoff_time)
+            else:
+                print("Max retries reached for EndpointConnectionError")
+                raise
+
+def lambda_process_function(function, lambda_client, session):
+    new_function = {}
+    new_function['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+    new_function['Region'] = session.region_name
+    
+    response = apply_backoff_with_retry(lambda_client.get_function_configuration, max_retries=5, base_backoff_time=1, FunctionName=function['FunctionName'])
+    new_function['Arn'] = response['FunctionArn']
+    
+    # Handle EndpointConnectionError with exponential backoff retry for list_tags
+    def get_tags():
+        return apply_backoff_with_retry(lambda_client.list_tags, max_retries=5, base_backoff_time=1, Resource=new_function['Arn'])['Tags']
+    
+    new_function['Tags'] = get_tags()
+
+    return new_function
+
+def get_lambda_functions(result, session, region, log):
+    new_result = {'lambda': []}
+    
+    def lambda_process_page(page, lambda_client, session):
+        functions = page['Functions']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for function in functions:
+                future = executor.submit(lambda_process_function, function, lambda_client, session)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_function = future.result()
+                new_result['lambda'].append(new_function)
+    
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections)
+    lambda_client = session.client('lambda', region_name=region, config=custom_config)
+    page_iterator = result['lambda'][0]
+    for page in page_iterator:
+        lambda_process_page(page, lambda_client, session)
+    
     return new_result
 
 def describe_resources(result, session, region, log):
@@ -381,13 +634,13 @@ def describe_resources(result, session, region, log):
         for resource in result:
             if resource == 'dynamodb':
                 tables = get_dynamodb_tables(result, session, region, log)
-                new_result['dynamodb'] = tables
+                new_result['dynamodb'] = tables['dynamodb']
             elif resource == 's3':
                 buckets = get_s3_buckets(result, session, region, log)
-                new_result['s3'] = buckets
+                new_result['s3'] = buckets['s3']
             elif resource == 'lambda':
                 functions = get_lambda_functions(result, session, region, log)
-                new_result['lambda'] = functions
+                new_result['lambda'] = functions['lambda']
             else:
                 print(f"Service {result['service']} not supported")
                 return
@@ -397,7 +650,7 @@ def describe_resources(result, session, region, log):
     
     log.info("Finished: AWS Describe Resources")
     return new_result
-
+    
 def main(
     scan,
     regions,
