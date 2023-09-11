@@ -409,7 +409,209 @@ def get_lambda_functions(result, session, region, log):
     return new_result
 
 """
+Describe AppSync graphqlApi
+"""
+def appsync_process_api(api, appsync_client, session):
+    new_api = {}
+    new_api['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+    new_api['Region'] = session.region_name
+    new_api['Arn'] = api['arn']
+    new_api['Tags'] = appsync_client.list_tags_for_resource(resourceArn=new_api['Arn'])['tags']
+    return new_api
+
+def get_appsync_graphql_api(result, session, region, log):
+    new_result = {'appsync': []}
+    def appsync_process_page(page, appsync_client, session):
+        apis = page['graphqlApis']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for api in apis:
+                future = executor.submit(appsync_process_api, api, appsync_client, session)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_api = future.result()
+                new_result['appsync'].append(new_api)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    appsync_client = session.client('appsync', region_name=region, config=custom_config)
+    page_iterator = result['appsync'][0]
+    for page in page_iterator:
+        appsync_process_page(page, appsync_client, session)
+    
+    return new_result
+
+"""
+Describe DirectConnect Connections
+"""
+def directconnect_process_connection(connection, directconnect_client, session):
+    new_connection = {}
+    new_connection['AccountID'] = session.client('sts').get_caller_identity().get('Account')
+    new_connection['Region'] = session.region_name
+    new_connection['ConnectionID'] = connection['connectionId']
+    new_connection['Tags'] = directconnect_client.list_tags_for_resource(resourceArn=new_connection['ConnectionID'])['tags']
+    return new_connection
+
+def get_directconnect_connections(result, session, region, log):
+    new_result = {'directconnect': []}
+    def directconnect_process_page(page, directconnect_client, session):
+        connections = page['connections']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for connection in connections:
+                future = executor.submit(directconnect_process_connection, connection, directconnect_client, session)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_connection = future.result()
+                new_result['directconnect'].append(new_connection)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    directconnect_client = session.client('directconnect', region_name=region, config=custom_config)
+    page_iterator = result['directconnect'][0]
+    for page in page_iterator:
+        directconnect_process_page(page, directconnect_client, session)
+    
+    return new_result
+
+"""
+Describe ELB Load Balancers V1
+"""
+def elb_process_load_balancer(load_balancer, elb_client, session):
+    new_load_balancer = {}
+    new_load_balancer['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_load_balancer['Region'] = session.region_name
+    new_load_balancer['LoadBalancerArn'] = load_balancer['loadBalancerArn']
+    new_load_balancer['Tags'] = elb_client.describe_tags(LoadBalancerNames=[new_load_balancer['LoadBalancerName']])['TagDescriptions'][0]['Tags']
+    return new_load_balancer
+
+def get_elb_load_balancers(result, session, region, log):
+    new_result = {'elb': []}
+    def elb_process_page(page, elb_client, session):
+        load_balancers = page['loadBalancerDescriptions']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for load_balancer in load_balancers:
+                future = executor.submit(elb_process_load_balancer, load_balancer, elb_client, session)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_load_balancer = future.result()
+                new_result['elb'].append(new_load_balancer)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    elb_client = session.client('elb', region_name=region, config=custom_config)
+    page_iterator = result['elb'][0]
+    for page in page_iterator:
+        elb_process_page(page, elb_client, session)
+
+    return new_result
+
+"""
+Describe ELB Load Balancers V2
+"""
+def elbv2_process_load_balancer(load_balancer, elbv2_client, session):
+    new_load_balancer = {}
+    new_load_balancer['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_load_balancer['Region'] = session.region_name
+    new_load_balancer['LoadBalancerArn'] = load_balancer['LoadBalancerArn']
+    new_load_balancer['Tags'] = elbv2_client.describe_tags(ResourceArns=[new_load_balancer['LoadBalancerName']])['TagDescriptions'][0]['Tags']
+    return new_load_balancer
+
+def get_elbv2_load_balancers(result, session, region, log):
+    new_result = {'elbv2': []}
+    def elbv2_process_page(page, elbv2_client, session):
+        load_balancers = page['LoadBalancers']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for load_balancer in load_balancers:
+                future = executor.submit(elbv2_process_load_balancer, load_balancer, elbv2_client, session)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_load_balancer = future.result()
+                new_result['elbv2'].append(new_load_balancer)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    elbv2_client = session.client('elbv2', region_name=region, config=custom_config)
+    page_iterator = result['elbv2'][0]
+    for page in page_iterator:
+        elbv2_process_page(page, elbv2_client, session)
+
+    return new_result
+
+"""
+Describe Event Rules
+"""
+def events_process_rule(rule, events_client, session, log):
+    new_rule = {}
+    new_rule['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_rule['Region'] = session.region_name
+    new_rule['Arn'] = rule['Arn']
+    new_rule['Tags'] = events_client.list_tags_for_resource(ResourceARN=new_rule['Arn'])['Tags']
+    return new_rule
+
+def get_events(result, session, region, log):
+    new_result = {'events': []}
+    def events_process_page(page, events_client, session):
+        rules = page['Rules']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for rule in rules:
+                future = executor.submit(events_process_rule, rule, events_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_rule = future.result()
+                new_result['events'].append(new_rule)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    events_client = session.client('events', region_name=region, config=custom_config)
+    page_iterator = result['events'][0]
+    for page in page_iterator:
+        events_process_page(page, events_client, session)
+
+    return new_result
+
+"""
+Describe SQS Queues
+"""
+def sqs_process_queue(queue, sqs_client, session, log):
+    new_queue = {}
+    new_queue['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_queue['Region'] = session.region_name
+    new_queue['Arn'] = sqs_client.get_queue_attributes(QueueUrl=queue, AttributeNames=['QueueArn'])['Attributes']['QueueArn']
+    new_queue['Tags'] = sqs_client.list_queue_tags(QueueUrl=queue)
+    return new_queue
+
+def get_sqs_queues(result, session, region, log):
+    new_result = {'sqs': []}
+    def sqs_process_page(page, sqs_client, session):
+        if 'QueueUrls' in page:
+            queues = page['QueueUrls']
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for queue in queues:
+                    future = executor.submit(sqs_process_queue, queue, sqs_client, session, log)
+                    futures.append(future)
+                for future in concurrent.futures.as_completed(futures):
+                    new_queue = future.result()
+                    new_result['sqs'].append(new_queue)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    sqs_client = session.client('sqs', region_name=region, config=custom_config)
+    page_iterator = result['sqs'][0]
+    for page in page_iterator:
+        sqs_process_page(page, sqs_client, session)
+
+    return new_result
+
+"""
 Describe all AWS resources
+DynamoDB
+S3
+Lambda
+AppSync
+DirectConnect
+ELB
+ELBv2
+Events
+SQS
 """
 
 def describe_resources(result, session, region, log):
@@ -426,6 +628,24 @@ def describe_resources(result, session, region, log):
             elif resource == 'lambda':
                 functions = get_lambda_functions(result, session, region, log)
                 new_result['lambda'] = functions['lambda']
+            elif resource == 'appsync':
+                functions = get_appsync_graphql_api(result, session, region, log)
+                new_result['appsync'] = functions['appsync']
+            elif resource == 'directconnect':
+                connections = get_directconnect_connections(result, session, region, log)
+                new_result['directconnect'] = connections['directconnect']
+            elif resource == 'elb':
+                load_balancers = get_elb_load_balancers(result, session, region, log)
+                new_result['elb'] = load_balancers['elb']
+            elif resource == 'elbv2':
+                load_balancers = get_elbv2_load_balancers(result, session, region, log)
+                new_result['elbv2'] = load_balancers['elbv2']
+            elif resource == 'events':
+                events = get_events(result, session, region, log)
+                new_result['events'] = events['events']
+            elif resource == 'sqs':
+                queues = get_sqs_queues(result, session, region, log)
+                new_result['sqs'] = queues['sqs']
             else:
                 print(f"Service {result['service']} not supported")
                 return

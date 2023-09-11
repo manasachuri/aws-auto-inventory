@@ -10,5 +10,21 @@
   {
     "function": "list_functions",
     "service": "lambda"
+  },
+  {
+    "function": "list_graphql_apis",
+    "service": "appsync"
+  },
+  {
+    "function": "describe_connections",
+    "service": "directconnect"
+  },
+  {
+    "function": "list_rules",
+    "service": "events"
+  },
+  {
+    "function": "list_queues",
+    "service": "sqs"
   }
 ]
