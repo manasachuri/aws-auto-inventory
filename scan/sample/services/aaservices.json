@@ -26,5 +26,29 @@
   {
     "function": "list_queues",
     "service": "sqs"
+  },
+  {
+    "function": "list_delivery_streams",
+    "service": "firehose"
+  },
+  {
+    "function": "list_streams",
+    "service": "kinesis"
+  },
+  {
+    "function": "list_state_machines",
+    "service": "stepfunctions"
+  },
+  {
+    "function": "list_instances",
+    "service": "connect"
+  },
+  {
+    "function": "describe_alarms",
+    "service": "cloudwatch"
+  },
+  {
+    "function": "describe_log_groups",
+    "service": "logs"
   }
 ]

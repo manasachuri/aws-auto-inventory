@@ -80,6 +80,26 @@ def api_call_with_retry(client, function_name, parameters, max_retries, retry_de
                         return function_to_call(**parameters)
                     else:
                         return function_to_call()
+            #Pagination for Firehose list_delivery_streams
+                elif function_name == 'list_delivery_streams':
+                    delivery_streams = []
+                    exclusive_start_delivery_stream_name = None
+                    while True:
+                        if exclusive_start_delivery_stream_name == None:
+                            response = client.list_delivery_streams(
+                                Limit=100,  # Adjust the limit as per your requirements
+                            )
+                        else:
+                            response = client.list_delivery_streams(
+                                Limit=100,  # Adjust the limit as per your requirements
+                                ExclusiveStartDeliveryStreamName=exclusive_start_delivery_stream_name
+                            )
+                        delivery_streams.extend(response['DeliveryStreamNames'])
+                        if not response.get('HasMoreDeliveryStreams'):
+                            break
+                        
+                        exclusive_start_delivery_stream_name = response['DeliveryStreamNames'][-1]
+                    return delivery_streams
                 paginator = client.get_paginator(function_name)
                 function_to_call = getattr(paginator, 'paginate')
                 if parameters:
@@ -602,7 +622,211 @@ def get_sqs_queues(result, session, region, log):
     return new_result
 
 """
-Describe all AWS resources
+Describe Kinesis Streams
+"""
+def kinesis_process_stream(stream, kinesis_client, session, log):
+    new_stream = {}
+    new_stream['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_stream['Region'] = session.region_name
+    new_stream['Arn'] = kinesis_client.describe_stream(StreamName=stream)['StreamDescription']['StreamARN']
+    new_stream['Tags'] = kinesis_client.list_tags_for_stream(StreamName=stream)['Tags']
+    return new_stream
+
+def get_kinesis_streams(result, session, region, log):
+    new_result = {'kinesis': []}
+    def kinesis_process_page(page, kinesis_client, session):
+        streams = page['StreamNames']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for stream in streams:
+                future = executor.submit(kinesis_process_stream, stream, kinesis_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_stream = future.result()
+                new_result['kinesis'].append(new_stream)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    kinesis_client = session.client('kinesis', region_name=region, config=custom_config)
+    page_iterator = result['kinesis'][0]
+    for page in page_iterator:
+        kinesis_process_page(page, kinesis_client, session)
+
+    return new_result
+
+"""
+Describe Kenisis firehose
+"""
+def firehose_process_delivery_stream(stream, firehose_client, session, log):
+    new_stream = {}
+    new_stream['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_stream['Region'] = session.region_name
+    new_stream['Arn'] = firehose_client.describe_delivery_stream(DeliveryStreamName=stream)['DeliveryStreamDescription']['DeliveryStreamARN']
+    new_stream['Tags'] = firehose_client.list_tags_for_delivery_stream(DeliveryStreamName=stream)['Tags']
+    return new_stream
+
+def get_firehose_streams(result, session, region, log):
+    new_result = {'firehose': []}
+    def firehose_process_page(page, firehose_client, session):
+        streams = page
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for stream in streams:
+                future = executor.submit(firehose_process_delivery_stream, stream, firehose_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_stream = future.result()
+                new_result['firehose'].append(new_stream)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    firehose_client = session.client('firehose', region_name=region, config=custom_config)
+    page_iterator = result['firehose']
+    for page in page_iterator:
+        firehose_process_page(page, firehose_client, session)
+
+    return new_result
+
+"""
+Describe State Machines
+"""
+def state_machine_process_state_machine(machine, sm_client, session, log):
+    new_machine = {}
+    new_machine['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_machine['Region'] = session.region_name
+    new_machine['Arn'] = sm_client.describe_state_machine(stateMachineArn=machine)['stateMachineArn']
+    new_machine['Tags'] = sm_client.list_tags_for_resource(resourceArn=machine)['tags']
+    return new_machine
+
+def get_state_machines(result, session, region, log):
+    new_result = {'stepfunctions': []}
+    def state_machine_process_page(page, sm_client, session):
+        machines = page['stateMachines']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for machine in machines:
+                future = executor.submit(state_machine_process_state_machine, machine['stateMachineArn'], sm_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_machine = future.result()
+                new_result['stepfunctions'].append(new_machine)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    sm_client = session.client('stepfunctions', region_name=region, config=custom_config)
+    page_iterator = result['stepfunctions'][0]
+    for page in page_iterator:
+        state_machine_process_page(page, sm_client, session)
+
+    return new_result
+
+"""
+Describe Connect Instances
+"""
+def connect_process_instance(instance, connect_client, session, log):
+    new_instance = {}
+    new_instance['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_instance['Region'] = session.region_name
+    new_instance['Arn'] = connect_client.describe_instance(InstanceId=instance['Id'])['Instance']['Arn']
+    try:
+        new_instance['Tags'] = connect_client.list_tags_for_resource(resourceArn=new_instance['Arn'])['tags']
+    except botocore.exceptions.ClientError as error:
+        error_code = error.response.get('Error', {}).get('Code')
+        print(f"Error Code: {error_code}")
+        if error_code == 'BadRequestException':
+            new_instance['Tags'] = []
+        else:
+            print(f"Error encountered : {error}")
+
+    return new_instance
+
+def get_connect_instances(result, session, region, log):
+    new_result = {'connect': []}
+    def connect_process_page(page, connect_client, session):
+        instances = page['InstanceSummaryList']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for instance in instances:
+                future = executor.submit(connect_process_instance, instance, connect_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_instance = future.result()
+                new_result['connect'].append(new_instance)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    connect_client = session.client('connect', region_name=region, config=custom_config)
+    page_iterator = result['connect'][0]
+    for page in page_iterator:
+        connect_process_page(page, connect_client, session)
+
+    return new_result
+
+"""
+Describe CloudWatch Alarms
+"""
+def cloudwatch_process_alarm(alarm, cw_client, session, log):
+    new_alarm = {}
+    new_alarm['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_alarm['Region'] = session.region_name
+    new_alarm['Arn'] = alarm['AlarmArn']
+    new_alarm['Tags'] = cw_client.list_tags_for_resource(ResourceARN=new_alarm['Arn'])['Tags']
+    return new_alarm
+
+def get_cloudwatch_alarms(result, session, region, log):
+    new_result = {'cloudwatch': []}
+    def cloudwatch_process_page(page, cw_client, session):
+        alarms = page['MetricAlarms']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for alarm in alarms:
+                future = executor.submit(cloudwatch_process_alarm, alarm, cw_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_alarm = future.result()
+                new_result['cloudwatch'].append(new_alarm)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    cw_client = session.client('cloudwatch', region_name=region, config=custom_config)
+    page_iterator = result['cloudwatch'][0]
+    for page in page_iterator:
+        cloudwatch_process_page(page, cw_client, session)
+
+    return new_result
+
+"""
+Describe CloudWatch Logs
+"""
+def logs_process_log_group(log_group, cwl_client, session, log):
+    new_log_group = {}
+    new_log_group['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_log_group['Region'] = session.region_name
+    if log_group['arn'].endswith(':*'):
+        new_log_group['Arn'] = log_group['arn'][:-2]
+        print(f"Processing Log Group: {new_log_group['Arn']}")
+    new_log_group['Tags'] = cwl_client.list_tags_for_resource(resourceArn=new_log_group['Arn'])['tags']
+    return new_log_group
+
+def get_log_groups(result, session, region, log):
+    new_result = {'logs': []}
+    def logs_process_page(page, cwl_client, session):
+        loggroups = page['logGroups']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for loggroup in loggroups:
+                future = executor.submit(logs_process_log_group, loggroup, cwl_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_log_group = future.result()
+                new_result['logs'].append(new_log_group)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    cwl_client = session.client('logs', region_name=region, config=custom_config)
+    page_iterator = result['logs'][0]
+    for page in page_iterator:
+        logs_process_page(page, cwl_client, session)
+
+    return new_result
+
+
+"""
+Describe all AWS resources:
 DynamoDB
 S3
 Lambda
@@ -612,6 +836,12 @@ ELB
 ELBv2
 Events
 SQS
+Kinesis
+kinesis firehose
+Step Functions - State Machines
+Connect
+CloudWatch
+Cloudwatch Logs
 """
 
 def describe_resources(result, session, region, log):
@@ -646,8 +876,27 @@ def describe_resources(result, session, region, log):
             elif resource == 'sqs':
                 queues = get_sqs_queues(result, session, region, log)
                 new_result['sqs'] = queues['sqs']
+            elif resource == 'kinesis':
+                streams = get_kinesis_streams(result, session, region, log)
+                new_result['kinesis'] = streams['kinesis']
+            elif resource == 'firehose':
+                print(f"Processing Service: {resource}")
+                streams = get_firehose_streams(result, session, region, log)
+                new_result['firehose'] = streams['firehose']
+            elif resource == 'stepfunctions':
+                machines = get_state_machines(result, session, region, log)
+                new_result['stepfunctions'] = machines['stepfunctions']
+            elif resource == 'connect':
+                connections = get_connect_instances(result, session, region, log)
+                new_result['connect'] = connections['connect']
+            elif resource == 'cloudwatch':
+                alarms = get_cloudwatch_alarms(result, session, region, log)
+                new_result['cloudwatch'] = alarms['cloudwatch']
+            elif resource == 'logs':
+                alarms = get_log_groups(result, session, region, log)
+                new_result['logs'] = alarms['logs']
             else:
-                print(f"Service {result['service']} not supported")
+                print(f"Service {resource} not supported")
                 return
     except Exception as exc:
         log.error(f"Error describing resources: {exc}")
