@@ -799,7 +799,6 @@ def logs_process_log_group(log_group, cwl_client, session, log):
     new_log_group['Region'] = session.region_name
     if log_group['arn'].endswith(':*'):
         new_log_group['Arn'] = log_group['arn'][:-2]
-        print(f"Processing Log Group: {new_log_group['Arn']}")
     new_log_group['Tags'] = cwl_client.list_tags_for_resource(resourceArn=new_log_group['Arn'])['tags']
     return new_log_group
 
@@ -824,6 +823,37 @@ def get_log_groups(result, session, region, log):
 
     return new_result
 
+"""
+Describe X-Ray Groups
+"""
+def xray_process_group(group, xray_client, session, log):
+    new_group = {}
+    new_group['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_group['Region'] = session.region_name
+    new_group['Arn'] = group['GroupARN']
+    new_group['Tags'] = xray_client.list_tags_for_resource(ResourceARN=new_group['Arn'])['Tags']
+    return new_group
+
+def get_xray_groups(result, session, region, log):
+    new_result = {'xray': []}
+    def xray_process_page(page, xray_client, session):
+        groups = page['Groups']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for group in groups:
+                future = executor.submit(xray_process_group, group, xray_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_group = future.result()
+                new_result['xray'].append(new_group)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    xray_client = session.client('xray', region_name=region, config=custom_config)
+    page_iterator = result['xray'][0]
+    for page in page_iterator:
+        xray_process_page(page, xray_client, session)
+
+    return new_result
 
 """
 Describe all AWS resources:
@@ -842,6 +872,7 @@ Step Functions - State Machines
 Connect
 CloudWatch
 Cloudwatch Logs
+X-ray
 """
 
 def describe_resources(result, session, region, log):
@@ -895,6 +926,9 @@ def describe_resources(result, session, region, log):
             elif resource == 'logs':
                 alarms = get_log_groups(result, session, region, log)
                 new_result['logs'] = alarms['logs']
+            elif resource == 'xray':
+                groups = get_xray_groups(result, session, region, log)
+                new_result['xray'] = groups['xray']
             else:
                 print(f"Service {resource} not supported")
                 return

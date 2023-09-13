@@ -50,5 +50,9 @@
   {
     "function": "describe_log_groups",
     "service": "logs"
+  },
+  {
+    "function": "get_groups",
+    "service": "xray"
   }
 ]
