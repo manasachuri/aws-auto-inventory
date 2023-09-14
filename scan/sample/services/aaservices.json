@@ -54,5 +54,33 @@
   {
     "function": "get_groups",
     "service": "xray"
+  },
+  {
+    "function": "describe_config_rules",
+    "service": "config"
+  },
+  {
+    "function": "describe_volumes",
+    "service": "ec2"
+  },
+  {
+    "function": "describe_snapshots",
+    "service": "ec2"
+  },
+  {
+    "function": "describe_addresses",
+    "service": "ec2"
+  },
+  {
+    "function": "describe_nat_gateways",
+    "service": "ec2"
+  },
+  {
+    "function": "describe_internet_gateways",
+    "service": "ec2"
+  },
+  {
+    "function": "list_keys",
+    "service": "kms"
   }
 ]

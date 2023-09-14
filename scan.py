@@ -296,7 +296,7 @@ def get_dynamodb_tables(result, session, region, log):
                 new_result['dynamodb'].append(new_table)
 
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections,    retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections,    retries = {'max_attempts': 10, 'mode': 'standard'})
     dynamodb_client = session.client('dynamodb', region_name=region, config=custom_config)
     page_iterator = result['dynamodb'][0]
     for page in page_iterator:
@@ -420,7 +420,7 @@ def get_lambda_functions(result, session, region, log):
                 new_function = future.result()
                 new_result['lambda'].append(new_function)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     lambda_client = session.client('lambda', region_name=region, config=custom_config)
     page_iterator = result['lambda'][0]
     for page in page_iterator:
@@ -452,7 +452,7 @@ def get_appsync_graphql_api(result, session, region, log):
                 new_api = future.result()
                 new_result['appsync'].append(new_api)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     appsync_client = session.client('appsync', region_name=region, config=custom_config)
     page_iterator = result['appsync'][0]
     for page in page_iterator:
@@ -484,7 +484,7 @@ def get_directconnect_connections(result, session, region, log):
                 new_connection = future.result()
                 new_result['directconnect'].append(new_connection)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     directconnect_client = session.client('directconnect', region_name=region, config=custom_config)
     page_iterator = result['directconnect'][0]
     for page in page_iterator:
@@ -516,7 +516,7 @@ def get_elb_load_balancers(result, session, region, log):
                 new_load_balancer = future.result()
                 new_result['elb'].append(new_load_balancer)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     elb_client = session.client('elb', region_name=region, config=custom_config)
     page_iterator = result['elb'][0]
     for page in page_iterator:
@@ -548,7 +548,7 @@ def get_elbv2_load_balancers(result, session, region, log):
                 new_load_balancer = future.result()
                 new_result['elbv2'].append(new_load_balancer)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     elbv2_client = session.client('elbv2', region_name=region, config=custom_config)
     page_iterator = result['elbv2'][0]
     for page in page_iterator:
@@ -580,7 +580,7 @@ def get_events(result, session, region, log):
                 new_rule = future.result()
                 new_result['events'].append(new_rule)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     events_client = session.client('events', region_name=region, config=custom_config)
     page_iterator = result['events'][0]
     for page in page_iterator:
@@ -613,7 +613,7 @@ def get_sqs_queues(result, session, region, log):
                     new_queue = future.result()
                     new_result['sqs'].append(new_queue)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     sqs_client = session.client('sqs', region_name=region, config=custom_config)
     page_iterator = result['sqs'][0]
     for page in page_iterator:
@@ -645,7 +645,7 @@ def get_kinesis_streams(result, session, region, log):
                 new_stream = future.result()
                 new_result['kinesis'].append(new_stream)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     kinesis_client = session.client('kinesis', region_name=region, config=custom_config)
     page_iterator = result['kinesis'][0]
     for page in page_iterator:
@@ -677,7 +677,7 @@ def get_firehose_streams(result, session, region, log):
                 new_stream = future.result()
                 new_result['firehose'].append(new_stream)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     firehose_client = session.client('firehose', region_name=region, config=custom_config)
     page_iterator = result['firehose']
     for page in page_iterator:
@@ -709,7 +709,7 @@ def get_state_machines(result, session, region, log):
                 new_machine = future.result()
                 new_result['stepfunctions'].append(new_machine)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     sm_client = session.client('stepfunctions', region_name=region, config=custom_config)
     page_iterator = result['stepfunctions'][0]
     for page in page_iterator:
@@ -750,7 +750,7 @@ def get_connect_instances(result, session, region, log):
                 new_instance = future.result()
                 new_result['connect'].append(new_instance)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     connect_client = session.client('connect', region_name=region, config=custom_config)
     page_iterator = result['connect'][0]
     for page in page_iterator:
@@ -782,7 +782,7 @@ def get_cloudwatch_alarms(result, session, region, log):
                 new_alarm = future.result()
                 new_result['cloudwatch'].append(new_alarm)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     cw_client = session.client('cloudwatch', region_name=region, config=custom_config)
     page_iterator = result['cloudwatch'][0]
     for page in page_iterator:
@@ -815,7 +815,7 @@ def get_log_groups(result, session, region, log):
                 new_log_group = future.result()
                 new_result['logs'].append(new_log_group)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     cwl_client = session.client('logs', region_name=region, config=custom_config)
     page_iterator = result['logs'][0]
     for page in page_iterator:
@@ -831,7 +831,13 @@ def xray_process_group(group, xray_client, session, log):
     new_group['AccountId'] = session.client('sts').get_caller_identity()['Account']
     new_group['Region'] = session.region_name
     new_group['Arn'] = group['GroupARN']
-    new_group['Tags'] = xray_client.list_tags_for_resource(ResourceARN=new_group['Arn'])['Tags']
+    try:
+        new_group['Tags'] = xray_client.list_tags_for_resource(ResourceARN=new_group['Arn'])['Tags']
+    except botocore.exceptions.ClientError as error:
+        error_code = error.response.get('Error', {}).get('Code')
+        print(f"Error Code: {error_code}")
+        new_group['Tags'] = []
+
     return new_group
 
 def get_xray_groups(result, session, region, log):
@@ -847,13 +853,197 @@ def get_xray_groups(result, session, region, log):
                 new_group = future.result()
                 new_result['xray'].append(new_group)
     max_connections = 100
-    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 5, 'mode': 'standard'})
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     xray_client = session.client('xray', region_name=region, config=custom_config)
     page_iterator = result['xray'][0]
     for page in page_iterator:
         xray_process_page(page, xray_client, session)
 
     return new_result
+
+"""
+Describe Config Rules
+"""
+def config_process_rule(rule, config_client, session, log):
+    new_rule = {}
+    new_rule['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_rule['Region'] = session.region_name
+    new_rule['Arn'] = rule['ConfigRuleArn']
+    new_rule['Tags'] = config_client.list_tags_for_resource(ResourceArn=new_rule['Arn'])['Tags']
+    return new_rule
+
+def get_config_rules(result, session, region, log):
+    new_result = {'config': []}
+    def config_process_page(page, config_client, session):
+        rules = page['ConfigRules']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for rule in rules:
+                future = executor.submit(config_process_rule, rule, config_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_rule = future.result()
+                new_result['config'].append(new_rule)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
+    config_client = session.client('config', region_name=region, config=custom_config)
+    page_iterator = result['config'][0]
+    for page in page_iterator:
+        config_process_page(page, config_client, session)
+
+    return new_result
+
+"""
+Describe KMS Keys
+"""
+def kms_process_keys(keys, kms_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['ResourceId'] = keys['KeyId']
+    new_resource['Tags'] = kms_client.list_tags_for_resource(ResourceArn=new_resource['ResourceId'])['Tags']
+    return new_resource
+
+def get_kms_keys(result, session, region, log):
+    new_result = {'kms': []}
+    def kms_process_page(page, kms_client, session):
+        keys = page['Keys']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for key in keys:
+                future = executor.submit(kms_process_keys, key, kms_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_key = future.result()
+                new_result['kms'].append(new_key)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
+    kms_client = session.client('kms', region_name=region, config=custom_config)
+    page_iterator = result['kms'][0]
+    for page in page_iterator:
+        kms_process_page(page, kms_client, session)
+
+    return new_result
+
+
+"""
+Describe EC2 Other - EBS, Snapshot, EIP, NAT Gateway, Internet Gateway
+"""
+def ec2_process_volumes(volume, ec2_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['ResourceId'] = volume['VolumeId']
+    new_resource['Tags'] = ec2_client.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [new_resource['ResourceId']]}])['Tags']
+    return new_resource
+
+def ec2_process_snapshots(snapshot, ec2_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['ResourceId'] = snapshot['SnapshotId']
+    new_resource['Tags'] = ec2_client.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [new_resource['ResourceId']]}])['Tags']
+    return new_resource
+
+def ec2_process_nat_gateway(nat_gateway, ec2_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['ResourceId'] = nat_gateway['NatGatewayId']
+    new_resource['Tags'] = ec2_client.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [new_resource['ResourceId']]}])['Tags']
+    return new_resource
+
+def ec2_process_internet_gateway(internet_gateway, ec2_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['ResourceId'] = internet_gateway['InternetGatewayId']
+    new_resource['Tags'] = ec2_client.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [new_resource['ResourceId']]}])['Tags']
+    return new_resource
+
+def ec2_process_addresses(address, ec2_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['ResourceId'] = address['PublicIp']
+    new_resource['Tags'] = address['Tags']
+    return new_resource
+
+def get_ec2_other(result, session, region, log):
+    new_result = {'ec2_other': {}}
+    def ec2_process_page(page, ec2_client, session):
+        if 'Volumes' in page:
+            if 'volumes' not in new_result['ec2_other']:
+                new_result['ec2_other']['volumes'] = []
+            volumes = page['Volumes']
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for volume in volumes:
+                    future = executor.submit(ec2_process_volumes, volume, ec2_client, session, log)
+                    futures.append(future)
+                for future in concurrent.futures.as_completed(futures):
+                    new_resource = future.result()
+                    new_result['ec2_other']['volumes'].append(new_resource)
+        elif 'Snapshots' in page:
+            snapshots = page['Snapshots']
+            if 'snapshots' not in new_result['ec2_other']:
+                new_result['ec2_other']['snapshots'] = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for snapshot in snapshots:
+                    future = executor.submit(ec2_process_snapshots, snapshot, ec2_client, session, log)
+                    futures.append(future)
+                for future in concurrent.futures.as_completed(futures):
+                    new_resource = future.result()
+                    new_result['ec2_other']['snapshots'].append(new_resource)
+        elif 'NatGateways' in page:
+            nat_gateways = page['NatGateways']
+            if 'nat_gateways' not in new_result['ec2_other']:
+                new_result['ec2_other']['nat_gateways'] = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for nat_gateway in nat_gateways:
+                    future = executor.submit(ec2_process_nat_gateway, nat_gateway, ec2_client, session, log)
+                    futures.append(future)
+                for future in concurrent.futures.as_completed(futures):
+                    new_resource = future.result()
+                    new_result['ec2_other']['nat_gateways'].append(new_resource)
+        elif 'InternetGateways' in page:
+            internet_gateways = page['InternetGateways']
+            if 'internet_gateways' not in new_result['ec2_other']:
+                new_result['ec2_other']['internet_gateways'] = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for internet_gateway in internet_gateways:
+                    future = executor.submit(ec2_process_internet_gateway, internet_gateway, ec2_client, session, log)
+                    futures.append(future)
+                for future in concurrent.futures.as_completed(futures):
+                    new_resource = future.result()
+                    new_result['ec2_other']['internet_gateways'].append(new_resource)
+        elif 'Addresses' in page:
+            addresses = page['Addresses']
+            if 'addresses' not in new_result['ec2_other']:
+                new_result['ec2_other']['addresses'] = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for address in addresses:
+                    future = executor.submit(ec2_process_addresses, address, ec2_client, session, log)
+                    futures.append(future)
+                for future in concurrent.futures.as_completed(futures):
+                    new_resource = future.result()
+                    new_result['ec2_other']['addresses'].append(new_resource)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
+    ec2_client = session.client('ec2', region_name=region, config=custom_config)
+    page_iterator_objects = result['ec2']
+    for page_iterator_object in page_iterator_objects:
+        log.info(f"EC2 Page Iterator Object Loop: {page_iterator_object}")
+        for page in page_iterator_object:
+            log.info(f"EC2 Page Loop: {page}")
+            ec2_process_page(page, ec2_client, session)
+
+    return new_result
+
 
 """
 Describe all AWS resources:
@@ -873,6 +1063,9 @@ Connect
 CloudWatch
 Cloudwatch Logs
 X-ray
+Config
+EC2 Other - Volume, Snapshot, EIP, NAT Gateway, Internet Gateway
+KMS
 """
 
 def describe_resources(result, session, region, log):
@@ -929,6 +1122,15 @@ def describe_resources(result, session, region, log):
             elif resource == 'xray':
                 groups = get_xray_groups(result, session, region, log)
                 new_result['xray'] = groups['xray']
+            elif resource == 'config':
+                rules = get_config_rules(result, session, region, log)
+                new_result['config'] = rules['config']
+            elif resource == 'ec2':
+                ec2_other = get_ec2_other(result, session, region, log)
+                new_result['ec2'] = ec2_other['ec2_other']
+            elif resource == 'kms':
+                keys = get_kms_keys(result, session, region, log)
+                new_result['kms'] = keys['kms']
             else:
                 print(f"Service {resource} not supported")
                 return
