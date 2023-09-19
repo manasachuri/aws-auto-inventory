@@ -1,3 +1,7 @@
 nohup: python: No such file or directory
 nohup: python: No such file or directory
 nohup: python: No such file or directory
+Traceback (most recent call last):
+  File "/Users/aa865402/Documents/ActiveStatus.py", line 1, in <module>
+    import pyautogui
+ModuleNotFoundError: No module named 'pyautogui'

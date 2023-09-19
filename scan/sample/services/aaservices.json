@@ -65,7 +65,8 @@
   },
   {
     "function": "describe_snapshots",
-    "service": "ec2"
+    "service": "ec2",
+    "parameters": "OwnerIds"
   },
   {
     "function": "describe_addresses",
@@ -80,7 +81,31 @@
     "service": "ec2"
   },
   {
+    "function": "describe_vpcs",
+    "service": "ec2"
+  },
+  {
+    "function": "describe_subnets",
+    "service": "ec2"
+  },
+  {
+    "function": "describe_route_tables",
+    "service": "ec2"
+  },
+  {
     "function": "list_keys",
     "service": "kms"
+  },
+  {
+    "function": "list_secrets",
+    "service": "secretsmanager"
+  },
+  {
+    "function": "search_products_as_admin",
+    "service": "servicecatalog"
+  },
+  {
+    "function": "list_applications",
+    "service": "servicecatalog-appregistry"
   }
 ]

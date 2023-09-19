@@ -63,7 +63,7 @@ def setup_logging(log_dir, log_level):
     return logging.getLogger(__name__)
 
 
-def api_call_with_retry(client, function_name, parameters, max_retries, retry_delay):
+def api_call_with_retry(session, client, function_name, parameters, max_retries, retry_delay):
     """
     Make an API call with exponential backoff.
 
@@ -103,6 +103,10 @@ def api_call_with_retry(client, function_name, parameters, max_retries, retry_de
                 paginator = client.get_paginator(function_name)
                 function_to_call = getattr(paginator, 'paginate')
                 if parameters:
+                    if parameters == 'OwnerIds':
+                        account_id = session.client('sts').get_caller_identity().get('Account')
+                        new_parameters = {'OwnerIds': [account_id]}
+                        return function_to_call(**new_parameters)
                     return function_to_call(**parameters)
                 else:
                     return function_to_call()
@@ -166,7 +170,7 @@ def _get_service_data(session, region_name, service, log, max_retries, retry_del
             )
             return None
         api_call = api_call_with_retry(
-            client, function, parameters, max_retries, retry_delay
+            session, client, function, parameters, max_retries, retry_delay
         )
         if result_key:
             response = api_call().get(result_key)
@@ -387,9 +391,10 @@ def get_s3_buckets(result, session, region, log):
 
     max_connections = 100
     custom_config = Config(max_pool_connections=max_connections)
-    s3_client = session.client('s3', region_name=region, config=custom_config)
-    buckets = result['s3'][0]['Buckets']
-    s3_process_buckets(buckets, s3_client, session, log)
+    if region == 'us-east-1':
+        s3_client = session.client('s3', region_name=region, config=custom_config)
+        buckets = result['s3'][0]['Buckets']
+        s3_process_buckets(buckets, s3_client, session, log)
     
     return new_result
 
@@ -900,8 +905,13 @@ def kms_process_keys(keys, kms_client, session, log):
     new_resource = {}
     new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
     new_resource['Region'] = session.region_name
-    new_resource['ResourceId'] = keys['KeyId']
-    new_resource['Tags'] = kms_client.list_tags_for_resource(ResourceArn=new_resource['ResourceId'])['Tags']
+    new_resource['Arn'] = f"arn:aws:kms:{new_resource['Region']}:{new_resource['AccountId']}:key/{keys['KeyId']}"
+    try:
+        new_resource['Tags'] = kms_client.list_resource_tags(KeyId=keys['KeyId'])['Tags']
+    except botocore.exceptions.ClientError as error:
+        error_code = error.response.get('Error', {}).get('Code')
+        print(f"Error Code: {error_code}")
+        new_resource['Tags'] = []
     return new_resource
 
 def get_kms_keys(result, session, region, log):
@@ -925,9 +935,107 @@ def get_kms_keys(result, session, region, log):
 
     return new_result
 
+"""
+Describe Secrets Manager Secrets
+"""
+def secrets_process_secrets(secrets, secrets_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['Arn'] = secrets['ARN']
+    if 'Tags' in secrets:
+        new_resource['Tags'] = secrets['Tags']
+    else:
+        new_resource['Tags'] = []
+    return new_resource
+
+def get_secrets_manager_secrets(result, session, region, log):
+    new_result = {'secretsmanager': []}
+    def secrets_process_page(page, secrets_client, session):
+        secrets = page['SecretList']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for secret in secrets:
+                future = executor.submit(secrets_process_secrets, secret, secrets_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_secret = future.result()
+                new_result['secretsmanager'].append(new_secret)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
+    secrets_client = session.client('secretsmanager', region_name=region, config=custom_config)
+    page_iterator = result['secretsmanager'][0]
+    for page in page_iterator:
+        secrets_process_page(page, secrets_client, session)
+
+    return new_result
 
 """
-Describe EC2 Other - EBS, Snapshot, EIP, NAT Gateway, Internet Gateway
+Describe Service Catalog Products
+"""
+def servicecatalog_process_products(product, service_catalog_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['Arn'] = product['ProductARN']
+    new_resource['TagOptions'] = []
+    return new_resource
+
+def get_servicecatalog_products(result, session, region, log):
+    new_result = {'servicecatalog': []}
+    def service_catalog_process_page(page, service_catalog_client, session):
+        products = page['ProductViewDetails']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for product in products:
+                future = executor.submit(servicecatalog_process_products, product, service_catalog_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_product = future.result()
+                new_result['servicecatalog'].append(new_product)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
+    service_catalog_client = session.client('servicecatalog', region_name=region, config=custom_config)
+    page_iterator = result['servicecatalog'][0]
+    for page in page_iterator:
+        service_catalog_process_page(page, service_catalog_client, session)
+
+    return new_result
+
+"""
+Describe Service Catalog App-Registry Applications
+"""
+def servicecatalog_process_applications(application, service_catalog_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['Arn'] = application['arn']
+    new_resource['TagOptions'] = service_catalog_client.list_tags_for_resource(resourceArn=new_resource['Arn'])['tags']
+    return new_resource
+
+def get_servicecatalog_appregistry_apps(result, session, region, log):
+    new_result = {'servicecatalog-appregistry': []}
+    def service_catalog_appregistry_process_page(page, service_catalog_appregistry_client, session):
+        applications = page['applications']
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for application in applications:
+                future = executor.submit(servicecatalog_process_applications, application, service_catalog_appregistry_client, session, log)
+                futures.append(future)
+            for future in concurrent.futures.as_completed(futures):
+                new_application = future.result()
+                new_result['servicecatalog-appregistry'].append(new_application)
+    max_connections = 100
+    custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
+    service_catalog_appregistry_client = session.client('servicecatalog-appregistry', region_name=region, config=custom_config)
+    page_iterator = result['servicecatalog-appregistry'][0]
+    for page in page_iterator:
+        service_catalog_appregistry_process_page(page, service_catalog_appregistry_client, session)
+
+    return new_result
+
+"""
+Describe EC2 Other - EBS, Snapshot, EIP, NAT Gateway, Internet Gateway, VPC, Subnet, Route Table.
 """
 def ec2_process_volumes(volume, ec2_client, session, log):
     new_resource = {}
@@ -967,6 +1075,30 @@ def ec2_process_addresses(address, ec2_client, session, log):
     new_resource['Region'] = session.region_name
     new_resource['ResourceId'] = address['PublicIp']
     new_resource['Tags'] = address['Tags']
+    return new_resource
+
+def ec2_process_vpcs(vpc, ec2_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['ResourceId'] = vpc['VpcId']
+    new_resource['Tags'] = ec2_client.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [new_resource['ResourceId']]}])['Tags']
+    return new_resource
+
+def ec2_process_subnets(subnet, ec2_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['ResourceId'] = subnet['SubnetId']
+    new_resource['Tags'] = ec2_client.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [new_resource['ResourceId']]}])['Tags']
+    return new_resource
+
+def ec2_process_route_tables(route_table, ec2_client, session, log):
+    new_resource = {}
+    new_resource['AccountId'] = session.client('sts').get_caller_identity()['Account']
+    new_resource['Region'] = session.region_name
+    new_resource['ResourceId'] = route_table['RouteTableId']
+    new_resource['Tags'] = ec2_client.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [new_resource['ResourceId']]}])['Tags']
     return new_resource
 
 def get_ec2_other(result, session, region, log):
@@ -1032,14 +1164,50 @@ def get_ec2_other(result, session, region, log):
                 for future in concurrent.futures.as_completed(futures):
                     new_resource = future.result()
                     new_result['ec2_other']['addresses'].append(new_resource)
+        elif 'Vpcs' in page:
+            vpcs = page['Vpcs']
+            if 'vpcs' not in new_result['ec2_other']:
+                new_result['ec2_other']['vpcs'] = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for vpc in vpcs:
+                    future = executor.submit(ec2_process_vpcs, vpc, ec2_client, session, log)
+                    futures.append(future)
+                for future in concurrent.futures.as_completed(futures):
+                    new_resource = future.result()
+                    new_result['ec2_other']['vpcs'].append(new_resource)
+        elif 'Subnets' in page:
+            subnets = page['Subnets']
+            if 'subnets' not in new_result['ec2_other']:
+                new_result['ec2_other']['subnets'] = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for subnet in subnets:
+                    future = executor.submit(ec2_process_subnets, subnet, ec2_client, session, log)
+                    futures.append(future)
+                for future in concurrent.futures.as_completed(futures):
+                    new_resource = future.result()
+                    new_result['ec2_other']['subnets'].append(new_resource)
+        elif 'RouteTables' in page:
+            route_tables = page['RouteTables']
+            if 'route_tables' not in new_result['ec2_other']:
+                new_result['ec2_other']['route_tables'] = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for route_table in route_tables:
+                    future = executor.submit(ec2_process_route_tables, route_table, ec2_client, session, log)
+                    futures.append(future)
+                for future in concurrent.futures.as_completed(futures):
+                    new_resource = future.result()
+                    new_result['ec2_other']['route_tables'].append(new_resource)
     max_connections = 100
     custom_config = Config(max_pool_connections=max_connections, retries = {'max_attempts': 10, 'mode': 'standard'})
     ec2_client = session.client('ec2', region_name=region, config=custom_config)
     page_iterator_objects = result['ec2']
     for page_iterator_object in page_iterator_objects:
-        log.info(f"EC2 Page Iterator Object Loop: {page_iterator_object}")
+        #log.info(f"EC2 Page Iterator Object Loop: {page_iterator_object}")
         for page in page_iterator_object:
-            log.info(f"EC2 Page Loop: {page}")
+            #log.info(f"EC2 Page Loop: {page}")
             ec2_process_page(page, ec2_client, session)
 
     return new_result
@@ -1066,6 +1234,9 @@ X-ray
 Config
 EC2 Other - Volume, Snapshot, EIP, NAT Gateway, Internet Gateway
 KMS
+Secrets Manager
+Service Catalog
+Service Catalog App Registry
 """
 
 def describe_resources(result, session, region, log):
@@ -1131,6 +1302,15 @@ def describe_resources(result, session, region, log):
             elif resource == 'kms':
                 keys = get_kms_keys(result, session, region, log)
                 new_result['kms'] = keys['kms']
+            elif resource == 'secretsmanager':
+                secrets = get_secrets_manager_secrets(result, session, region, log)
+                new_result['secretsmanager'] = secrets['secretsmanager']
+            elif resource == 'servicecatalog':
+                products = get_servicecatalog_products(result, session, region, log)
+                new_result['servicecatalog'] = products['servicecatalog']
+            elif resource == 'servicecatalog-appregistry':
+                apps = get_servicecatalog_appregistry_apps(result, session, region, log)
+                new_result['servicecatalog-appregistry'] = apps['servicecatalog-appregistry']
             else:
                 print(f"Service {resource} not supported")
                 return
